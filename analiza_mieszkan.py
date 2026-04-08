@@ -99,10 +99,11 @@ df_selection['distCentreCategory'] = pd.cut(df_selection['centreDistance'], bins
 # Statystyki główne
 mediany = df_selection.groupby('type', observed=False)['pricePerSquareMeters'].median()
 
-st.subheader(f"Dane dla miasta {selected_city}")
+st.header(f"Dane dla miasta {selected_city}")
 st.dataframe(df_selection[["city","type","buildYear","pricePerSquareMeters","standardScore","distCentreCategory"]].reset_index(drop=True))
 
 # Wykres 1: Mediana
+
 st.subheader(f"Mediana cen w mieście {selected_city}")
 plt.figure(figsize=(10, 5))
 bars = plt.bar(mediany.index, mediany.values, color="royalblue", width=0.6)
@@ -141,21 +142,128 @@ st.pyplot(plt)
 plt.close()
 
 # --- OKAZJE ---
-statisctic = df_selection.groupby(['city','type'], observed=False)['pricePerSquareMeters'].agg(['median', 'std']).reset_index()
-statisctic.columns = ['city','type', 'median_price', 'std_price']
-df_city = df_selection.merge(statisctic, on=['city','type'])
-df_city['is_bargain'] = df_city['pricePerSquareMeters'] < (df_city['median_price'] - 0.5 * df_city['std_price'])
-top_bargains = df_city[(df_city['is_bargain']) & (df_city['standardScore'] > 0)].sort_values(by='pricePerSquareMeters')
 
-if not top_bargains.empty:
-    df_top_map = top_bargains.groupby(['city', 'type'], observed=False).head(3).reset_index(drop=True)
-    st.subheader(f"Mapa okazji cenowych: {miasta_napis}")
-    map_zoom = 10 if len(selected_city) == 1 else 5
-    fig = px.scatter_map(df_top_map, lat="latitude", lon="longitude", size="standardScore", color="type", zoom=map_zoom, height=600)
+#TOP 3 w wybranym mieście poniżej mediany z każdej kategorii
+statisctic = df_selection.groupby('type')['pricePerSquareMeters'].agg(['median', 'std']).reset_index()
+statisctic.columns = ['type', 'median_price', 'std_price']
+df_city = df_selection.merge(statisctic, on='type')
+
+# Definicja okazji: Cena za m2 < (Mediana - 1 * Odchylenie Standardowe)
+df_city['is_bargain'] = df_city['pricePerSquareMeters'] < (df_city['median_price'] - 1 * df_city['std_price'])
+
+top_bargains = df_city[df_city['is_bargain']].sort_values(by='pricePerSquareMeters')
+
+kawalerka = pd.DataFrame()
+srednie = pd.DataFrame()
+duze = pd.DataFrame()
+
+if top_bargains.empty:
+    st.write("Brak okazji cenowych.")
+else:
+    top = top_bargains[(top_bargains['standardScore'] > 0) ].sort_values(by='pricePerSquareMeters')
+    if top.empty:
+        st.write("Brak mieszkań spełniających kryteria udogodnień i odległości.")
+    else:
+        # 2. Grupowanie i wybieranie top 3 po typie mieszkania
+        top_3_by_type = top.sort_values('pricePerSquareMeters').groupby('type').head(3).reset_index(drop=True)
+
+        # 3. Wyświetlenie wyników
+        kawalerka = top_3_by_type[top_3_by_type['type'] == 'Kawalerka'].reset_index(drop=True)
+        srednie = top_3_by_type[top_3_by_type['type'] == 'Średnie'].reset_index(drop=True)
+        duze = top_3_by_type[top_3_by_type['type'] == 'Duże'].reset_index(drop=True)
+
+        kolumny_do_pokazania = ['pricePerSquareMeters','standardScore','distCentreCategory']
+
+df_top_map = pd.concat([kawalerka, srednie, duze]).reset_index(drop=True)
+
+# 4. Mapa tylko z tymi 9 okazjami
+fig = px.scatter_map(
+    df_top_map,
+    lat="latitude",
+    lon="longitude",
+    size="standardScore",
+    color = "type",
+    color_discrete_map= {"Kawalerka": "#00FF00", "Średnie": "#0000FF", "Duże": "#FF0000"},
+    hover_data=['type', 'price', 'pricePerSquareMeters', 'standardScore'],
+    labels={"type": "Rodzaj mieszkania"},
+    zoom=10,
+    height=600
+)
+
+# 5. Styl mapy i wyświetlenie
+fig.update_layout(map_style="open-street-map")
+fig.update_layout(margin={"r":0,"t":60,"l":0,"b":0})
+
+if not df_top_map.empty:
+    st.subheader(f"Mapa okazji cenowych: {selected_city}")
     st.plotly_chart(fig, use_container_width=True)
-    st.dataframe(df_top_map[['city', 'type', 'price', 'pricePerSquareMeters', 'standardScore', 'distCentreCategory']])
+
+    st.subheader("Szczegóły wybranych okazji")
+    st.write(df_top_map[['type', 'price', 'pricePerSquareMeters', 'standardScore', 'distCentreCategory']])
+else:
+    st.warning(f"Brak ofert spełniających kryteria okazji w mieście {selected_city}.")
+
+# --- ANALIZA WYBRANEJ OFERTY I PODOBNE OFERTY ---
+st.markdown("---")
+st.header("🧐 Analiza wybranej oferty")
+
+# 1. Wybór oferty z tabeli 'df_top_map' (którą już masz w kodzie)
+if not df_top_map.empty:
+    selected_index = st.selectbox(
+        "Wybierz numer oferty z tabeli powyżej (Index), aby zobaczyć szczegóły:",
+        options=df_top_map.index,
+        format_func=lambda x: f"Oferta nr {x} - {df_top_map.loc[x, 'type']} w mieście {df_top_map.loc[x, 'city']}"
+    )
+
+    selected_offer = df_top_map.loc[selected_index]
+
+    # 2. Wyświetlenie podsumowania wybranej oferty w kolumnach
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Cena", f"{selected_offer['price']:,} zł")
+    with col2:
+        st.metric("Cena za m²", f"{selected_offer['pricePerSquareMeters']:.2f} zł")
+    with col3:
+        st.metric("Metraż", f"{selected_offer['squareMeters']} m²")
+
+    st.write(
+        f"📍 **Lokalizacja:** {selected_offer['city']}, odległość od centrum: {selected_offer['distCentreCategory']}")
+    st.write(f"🛠️ **Standard (0-4):** {selected_offer['standardScore']}")
+
+    # 3. Szukanie podobnych ofert w INNYCH miastach
+    st.subheader("🤖 Podobne oferty w innych miastach")
+
+    # Kryteria podobieństwa: ten sam typ mieszkania, cena +/- 10%, inne miasto
+    price_min = selected_offer['price'] * 0.90
+    price_max = selected_offer['price'] * 1.10
+
+    similar_offers = df[
+        (df['city'] != selected_offer['city']) &
+        (df['price'] >= price_min) &
+        (df['price'] <= price_max)
+        ].copy()
+
+    # Ponownie musimy przypisać 'type' dla całego df, żeby móc filtrować po typie
+    similar_offers['type'] = pd.cut(similar_offers['squareMeters'], bins=bins, labels=labels)
+    similar_offers = similar_offers[similar_offers['type'] == selected_offer['type']]
+
+    if not similar_offers.empty:
+        # Wybieramy 2 losowe lub 2 najbliższe cenowo
+        recommendations = similar_offers.sample(min(2, len(similar_offers)))
+
+        # Obliczamy cenę za m2 dla rekomendacji, żeby tabela była spójna
+        recommendations['pricePerSquareMeters'] = round(recommendations['price'] / recommendations['squareMeters'], 2)
+
+        st.table(recommendations[['city', 'price', 'pricePerSquareMeters', 'squareMeters']])
+    else:
+        st.info("Nie znaleziono podobnych ofert w innych miastach w tym zakresie cenowym.")
+else:
+    st.info("Najpierw wybierz miasto i parametry, aby wygenerować tabelę okazji.")
 
 # --- PORÓWNANIE 3 MIAST ---
+st.markdown("---")
+st.header(f"Porównanie mediany cen: {', '.join(selected_cities)}")
+
 if selected_cities:
     df_comp = df[df['city'].isin(selected_cities)].copy()
     df_comp['type'] = pd.cut(df_comp["squareMeters"], bins=bins, labels=labels)
@@ -164,7 +272,6 @@ if selected_cities:
     # Grupujemy po mieście i typie
     stats_comp = df_comp.groupby(['city', 'type'], observed = False)['pricePerSquareMeters'].median().unstack(level = 0)
 
-    st.subheader(f"Porównanie mediany cen: {', '.join(selected_cities)}")
     plt.figure(figsize=(16, 8))
     ax = stats_comp.plot(kind='bar', figsize=(16, 8), color=['royalblue', 'orange', 'forestgreen'], width=0.8)
 
@@ -185,4 +292,54 @@ if selected_cities:
     plt.close()
 
 else:
-    st.info("Wybierz miasta w panelu bocznym, aby zobaczyć porównanie.")
+    st.warning("Wybierz miasta w panelu bocznym, aby zobaczyć porównanie.")
+
+# --- NAJTAŃSZE I NAJDROŻSZE MIASTO W POLSCE ---
+st.markdown("---")
+st.header("🏆 Najdroższe vs Najtańsze miasto")
+
+# 1. Obliczamy ogólną medianę dla każdego miasta, żeby znaleźć liderów
+# Robimy to na oryginalnym 'df', żeby pokazać prawdę o całym rynku
+df_all = df.copy()
+df_all['pricePerSquareMeters'] = df_all['price'] / df_all['squareMeters']
+city_medians = df_all.groupby('city')['pricePerSquareMeters'].median().sort_values()
+
+najtansze_miasto = city_medians.index[0]
+najdrozsze_miasto = city_medians.index[-1]
+
+# 2. Przygotowujemy dane tylko dla tych dwóch miast
+df_extremes = df_all[df_all['city'].isin([najtansze_miasto, najdrozsze_miasto])].copy()
+df_extremes['type'] = pd.cut(df_extremes['squareMeters'], bins=bins, labels=labels)
+
+# 3. Obliczamy mediany z podziałem na typy
+stats_extremes = df_extremes.groupby(['city', 'type'], observed=False)['pricePerSquareMeters'].median().unstack(level=0)
+
+# 4. Wykres (Twoja stylistyka)
+st.subheader(f"Zestawienie: {najtansze_miasto} (Najtańsze) vs {najdrozsze_miasto} (Najdroższe)")
+
+fig, ax = plt.subplots(figsize=(12, 6))
+# Ustawiamy konkretne kolory: czerwony dla drogiego, zielony dla taniego
+stats_extremes.plot(kind='bar', ax=ax, color=['#e74c3c', '#2ecc71'], width=0.7)
+
+# Dodanie Twoich etykiet
+for p in ax.patches:
+    yval = p.get_height()
+    if yval > 0:
+        ax.text(p.get_x() + p.get_width()/2, yval + 100, f'{yval:.0f} zł', ha='center', va='bottom', fontweight='bold', fontsize=10)
+
+plt.title(f"Różnica w cenach za m² między ekstremami", fontsize=12, fontweight='bold')
+plt.ylabel("Cena za m² [PLN]")
+plt.xlabel("Typ mieszkania")
+plt.xticks(rotation=0)
+plt.legend(title="Miasto")
+
+# Twoje usuwanie ramek
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+
+st.pyplot(fig)
+plt.close()
+
+# Krótka ciekawostka pod wykresem
+roznica = city_medians.max() / city_medians.min()
+st.info(f"💡 Ciekawostka: Mediana cen w mieście **{najdrozsze_miasto}** jest o **{roznica:.1f}x** wyższa niż w mieście **{najtansze_miasto}**.")
