@@ -53,4 +53,5 @@ streamlit run analiza_mieszkan.py
 
 **📊 Dane:**
 
-Projekt korzysta z bazy danych apartments_pl_2024_06.csv - https://www.kaggle.com/datasets/krzysztofjamroz/apartment-prices-in-poland
+Projekt korzysta z bazy danych apartments_pl_2024_06.csv 
+https://www.kaggle.com/datasets/krzysztofjamroz/apartment-prices-in-poland
