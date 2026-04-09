@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
 import seaborn as sns
+from sklearn.linear_model import LinearRegression
 
 st.set_page_config(page_title="Analiza Mieszkań", layout="wide")
 st.title(20*"-" + " Interaktywna Analiza Rynku Mieszkań "+20*"-")
@@ -96,11 +97,38 @@ dist_bins = [0, 0.5, 1.5, 5, 50]
 dist_labels = ['Blisko (<500m)', 'Spacerem (0.5-1.5km)', 'Autem (1.5-5km)', 'Daleko (>5km)']
 df_selection['distCentreCategory'] = pd.cut(df_selection['centreDistance'], bins=dist_bins, labels=dist_labels)
 
+# --- DEAL SCORE ---
+
+# 1. Przygotowanie cech (liczby) do modelu
+features = ['squareMeters', 'centreDistance', 'standardScore', 'buildYear']
+
+# 2. Tworzymy i trenujemy model na aktualnie przefiltrowanych danych - X - cechy, Y- przewidywana cena
+X = df_selection[features]
+y = df_selection['price']
+
+model = LinearRegression()
+model.fit(X, y)
+
+# 3. Przewidujemy ceny "statystyczne" na podstawie cech
+df_selection['predictedPrice'] = model.predict(X)
+
+# 4. Obliczamy Deal Score w % (o ile taniej/drożej jest niż przewiduje model)
+df_selection['dealScore'] = (df_selection['predictedPrice'] - df_selection['price']) / df_selection['predictedPrice'] * 100
+
+# 5. Funkcja nadająca etykiety
+def get_deal_label(score):
+    if score > 10: return "🔥 OKAZJA"
+    if score > 5: return "✅ DOBRA"
+    if score > -5: return "⚖️ RYNKOWA"
+    return "🚩 DROGO"
+
+df_selection['Ocena'] = df_selection['dealScore'].apply(get_deal_label)
+
 # Statystyki główne
 mediany = df_selection.groupby('type', observed=False)['pricePerSquareMeters'].median()
 
 st.header(f"Dane dla miasta {selected_city}")
-st.dataframe(df_selection[["city","type","buildYear","pricePerSquareMeters","standardScore","distCentreCategory"]].reset_index(drop=True))
+st.dataframe(df_selection[["city","type","pricePerSquareMeters","distCentreCategory", "Ocena"]].reset_index(drop=True))
 
 # Wykres 1: Mediana
 
@@ -199,7 +227,7 @@ if not df_top_map.empty:
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Szczegóły wybranych okazji")
-    st.write(df_top_map[['type', 'price', 'pricePerSquareMeters', 'standardScore', 'distCentreCategory']])
+    st.write(df_top_map[['type', 'price','pricePerSquareMeters', 'standardScore', 'distCentreCategory', 'Ocena']])
 else:
     st.warning(f"Brak ofert spełniających kryteria okazji w mieście {selected_city}.")
 
@@ -248,13 +276,13 @@ if not df_top_map.empty:
     similar_offers = similar_offers[similar_offers['type'] == selected_offer['type']]
 
     if not similar_offers.empty:
-        # Wybieramy 2 losowe lub 2 najbliższe cenowo
-        recommendations = similar_offers.sample(min(2, len(similar_offers)))
+        # Wybieramy 4 losowe lub 4 najbliższe cenowo
+        recommendations = similar_offers.sample(min(4, len(similar_offers)))
 
         # Obliczamy cenę za m2 dla rekomendacji, żeby tabela była spójna
         recommendations['pricePerSquareMeters'] = round(recommendations['price'] / recommendations['squareMeters'], 2)
 
-        st.table(recommendations[['city', 'price', 'pricePerSquareMeters', 'squareMeters']])
+        st.table(recommendations[['city', 'price', 'squareMeters','pricePerSquareMeters']].sort_values(by='pricePerSquareMeters'))
     else:
         st.info("Nie znaleziono podobnych ofert w innych miastach w tym zakresie cenowym.")
 else:
