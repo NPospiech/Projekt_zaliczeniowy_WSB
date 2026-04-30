@@ -2,25 +2,24 @@
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
 
-st.set_page_config(page_title="Analiza Mieszkań", layout="wide")
+st.set_page_config(page_title="Analiza Rynku Mieszkań", layout="wide")
 st.title(20*"-" + " Interaktywna Analiza Rynku Mieszkań "+20*"-")
 
-# Wczytanie pliku csv
+# WCZYTANIE PLIKU
 path = "apartments_pl_2024_06.csv"
 df = pd.read_csv(path, encoding="utf-8-sig")
 
-# Czyszczenie danych
+# CZYSZCZENIE DANYCH
 df = df.drop_duplicates()
 df.drop(["id","ownership","buildingMaterial","floor","poiCount","postOfficeDistance","pharmacyDistance","hasStorageRoom","condition","rooms","schoolDistance","kindergartenDistance","restaurantDistance","clinicDistance","collegeDistance"], axis=1, inplace=True)
-df.dropna(inplace=True)
+df.dropna(inplace=True) #usunięcie brakujących danych
 
-# Filtrowanie
+# FILTROWANIE
 st.sidebar.header("🔍 Filtry wyszukiwania")
 
 available_cities = df['city'].unique()
@@ -39,7 +38,7 @@ min_buildYear, max_buildYear = int(df['buildYear'].min()), int(df['buildYear'].m
 selected_year = st.sidebar.slider("Rok budowy: ", min_buildYear, max_buildYear, (min_buildYear, max_buildYear))
 
 st.sidebar.markdown("---") # Linia oddzielająca
-st.sidebar.subheader("🏗️ Udogodnienia")
+st.sidebar.subheader("Udogodnienia: ")
 
 filter_balcony = st.sidebar.checkbox("Balkon")
 filter_elevator = st.sidebar.checkbox("Winda")
@@ -59,13 +58,8 @@ df_selection = df[
     (df['buildYear'] <= selected_year[1])
 ].copy()
 
-if selected_city:
-    miasta_napis = ", ".join(selected_city)
-else:
-    miasta_napis = "Wszystkie miasta"
-
 if df_selection.empty:
-    st.warning("Brak danych dla wybranych filtrów!")
+    st.warning("Wybierz miasto")
     st.stop()
 
 if filter_balcony:
@@ -79,12 +73,13 @@ if filter_security:
 if filter_storage:
     df_selection = df_selection[df_selection['hasStorageRoom'] == 'yes']
 
-# Nowy multiselect do porównania na dole
+# MULTISELECT
+st.sidebar.markdown("---")
 st.sidebar.header("📊 Porównaj 3 wybrane miasta")
 cieties_list = df['city'].unique()
 selected_cities = st.sidebar.multiselect("Wybierz do 3 miast do porównania:", cieties_list, max_selections=3, key="comp")
 
-# Obliczenia
+# OBLICZENIA
 df_selection['pricePerSquareMeters'] = round(df_selection['price']/df_selection['squareMeters'], 2)
 bins = [0, 40, 70, 200]
 labels = ['Kawalerka', 'Średnie', 'Duże']
@@ -97,22 +92,22 @@ dist_bins = [0, 0.5, 1.5, 5, 50]
 dist_labels = ['Blisko (<500m)', 'Spacerem (0.5-1.5km)', 'Autem (1.5-5km)', 'Daleko (>5km)']
 df_selection['distCentreCategory'] = pd.cut(df_selection['centreDistance'], bins=dist_bins, labels=dist_labels)
 
-# --- DEAL SCORE ---
+# DEAL SCORE
 
 # 1. Przygotowanie cech (liczby) do modelu
 features = ['squareMeters', 'centreDistance', 'standardScore', 'buildYear']
 
-# 2. Tworzymy i trenujemy model na aktualnie przefiltrowanych danych - X - cechy, Y- przewidywana cena
+# 2. Tworzenie i trenowanie modelu na aktualnie przefiltrowanych danych - X - cechy, Y- przewidywana cena
 X = df_selection[features]
 y = df_selection['price']
 
 model = LinearRegression()
 model.fit(X, y)
 
-# 3. Przewidujemy ceny "statystyczne" na podstawie cech
+# 3. Przewidywanie ceny "statystyczne" na podstawie cech
 df_selection['predictedPrice'] = model.predict(X)
 
-# 4. Obliczamy Deal Score w % (o ile taniej/drożej jest niż przewiduje model)
+# 4. Obliczenie Deal Score w % (o ile taniej/drożej jest niż przewiduje model)
 df_selection['dealScore'] = (df_selection['predictedPrice'] - df_selection['price']) / df_selection['predictedPrice'] * 100
 
 # 5. Funkcja nadająca etykiety
@@ -124,11 +119,13 @@ def get_deal_label(score):
 
 df_selection['Ocena'] = df_selection['dealScore'].apply(get_deal_label)
 
-# Statystyki główne
+# STATYSTYKI GŁÓWNE
 mediany = df_selection.groupby('type', observed=False)['pricePerSquareMeters'].median()
 
 st.header(f"Dane dla miasta {selected_city}")
 st.dataframe(df_selection[["city","type","pricePerSquareMeters","distCentreCategory", "Ocena"]].reset_index(drop=True))
+
+# WYKRESY
 
 # Wykres 1: Mediana
 
@@ -136,12 +133,12 @@ st.subheader(f"Mediana cen w mieście {selected_city}")
 plt.figure(figsize=(10, 5))
 bars = plt.bar(mediany.index, mediany.values, color="royalblue", width=0.6)
 for bar in bars:
-    yval = bar.get_height()
-    plt.text(bar.get_x() + bar.get_width()/2, yval + 100, f'{yval:.2f} zł', ha='center', va='bottom', fontweight='bold')
+    plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 100, f'{bar.get_height():.2f} ', ha='center', va='bottom', fontweight='bold')
 plt.gca().spines['top'].set_visible(False)
 plt.gca().spines['right'].set_visible(False)
+plt.xlabel("Kategoria mieszkania")
+plt.ylabel('Mediana cen [PLN]')
 st.pyplot(plt)
-plt.close()
 
 # Wykres 2: Odległość
 st.subheader("Wpływ odległości od centrum miasta")
@@ -150,8 +147,9 @@ for t in df_selection['type'].unique():
     subset = df_selection[df_selection['type'] == t]
     plt.scatter(subset['centreDistance'], subset['pricePerSquareMeters'], label=t, alpha=0.5)
 plt.legend(title='Typ:')
+plt.ylabel('Cena za m² [PLN]')
+plt.xlabel('Odległość od centrum [km]')
 st.pyplot(plt)
-plt.close()
 
 # Wykres 3: Rok budowy
 st.subheader("Rozkład cen względem roku budowy")
@@ -159,20 +157,23 @@ plt.figure(figsize=(20, 6))
 for t in df_selection['type'].unique():
     subset = df_selection[df_selection['type'] == t]
     plt.scatter(subset['buildYear'], subset['pricePerSquareMeters'], label=t, alpha=0.5)
+plt.xlabel("Roku budowy")
+plt.ylabel("Cena za m² [PLN]")
 st.pyplot(plt)
-plt.close()
 
 # Wykres 4: Boxplot
 st.subheader("Rozkład cen względem udogodnień")
 plt.figure(figsize=(18, 6))
 sns.boxplot(x='standardScore', y='pricePerSquareMeters', data=df_selection, palette="Set2", hue='type')
+plt.xlabel("Poziom standardu [pkt]")
+plt.ylabel("Cena za m² [PLN]")
 st.pyplot(plt)
-plt.close()
 
-# --- OKAZJE ---
+# OKAZJE
 
 #TOP 3 w wybranym mieście poniżej mediany z każdej kategorii
 statisctic = df_selection.groupby('type')['pricePerSquareMeters'].agg(['median', 'std']).reset_index()
+
 statisctic.columns = ['type', 'median_price', 'std_price']
 df_city = df_selection.merge(statisctic, on='type')
 
@@ -227,20 +228,31 @@ if not df_top_map.empty:
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Szczegóły wybranych okazji")
-    st.write(df_top_map[['type', 'price','pricePerSquareMeters', 'standardScore', 'distCentreCategory', 'Ocena']])
+
+    sekcje = [
+        ("🏠 Kawalerki", kawalerka),
+        ("🏢 Mieszkania średnie", srednie),
+        ("🏰 Mieszkania duże", duze)
+    ]
+
+    for nazwa,dane in sekcje:
+        st.subheader(nazwa)
+        st.write(dane[['price', 'pricePerSquareMeters', 'standardScore', 'distCentreCategory', 'Ocena']])
+
+
 else:
     st.warning(f"Brak ofert spełniających kryteria okazji w mieście {selected_city}.")
 
-# --- ANALIZA WYBRANEJ OFERTY I PODOBNE OFERTY ---
+# ANALIZA WYBRANEJ OFERTY I PODOBNE OFERTY
 st.markdown("---")
-st.header("🧐 Analiza wybranej oferty")
+st.header("Analiza wybranej oferty")
 
-# 1. Wybór oferty z tabeli 'df_top_map' (którą już masz w kodzie)
+# 1. Wybór oferty z tabeli 'df_top_map'
 if not df_top_map.empty:
     selected_index = st.selectbox(
         "Wybierz numer oferty z tabeli powyżej (Index), aby zobaczyć szczegóły:",
         options=df_top_map.index,
-        format_func=lambda x: f"Oferta nr {x} - {df_top_map.loc[x, 'type']} w mieście {df_top_map.loc[x, 'city']}"
+        format_func=lambda x: f"Oferta nr {x % 3} - {df_top_map.loc[x, 'type']}"
     )
 
     selected_offer = df_top_map.loc[selected_index]
@@ -259,7 +271,7 @@ if not df_top_map.empty:
     st.write(f"🛠️ **Standard (0-4):** {selected_offer['standardScore']}")
 
     # 3. Szukanie podobnych ofert w INNYCH miastach
-    st.subheader("🤖 Podobne oferty w innych miastach")
+    st.subheader("Podobne oferty w innych miastach")
 
     # Kryteria podobieństwa: ten sam typ mieszkania, cena +/- 10%, inne miasto
     price_min = selected_offer['price'] * 0.90
@@ -271,24 +283,31 @@ if not df_top_map.empty:
         (df['price'] <= price_max)
         ].copy()
 
-    # Ponownie musimy przypisać 'type' dla całego df, żeby móc filtrować po typie
+    # Ponowne przypisanie 'type' dla całego df, żeby móc filtrować po typie
     similar_offers['type'] = pd.cut(similar_offers['squareMeters'], bins=bins, labels=labels)
     similar_offers = similar_offers[similar_offers['type'] == selected_offer['type']]
 
     if not similar_offers.empty:
-        # Wybieramy 4 losowe lub 4 najbliższe cenowo
-        recommendations = similar_offers.sample(min(4, len(similar_offers)))
+        # 4 losowe oferty lub 4 najbliższe cenowo
+        recommendations = similar_offers.sample(min(4, len(similar_offers))).copy()
 
-        # Obliczamy cenę za m2 dla rekomendacji, żeby tabela była spójna
-        recommendations['pricePerSquareMeters'] = round(recommendations['price'] / recommendations['squareMeters'], 2)
+        # Obliczenie ceny za m2 dla rekomendacji
+        recommendations['pricePerSquareMeters'] = recommendations['price'] / recommendations['squareMeters']
+        recommendations['squareMeters'] = recommendations['squareMeters'].round(2)
+        recommendations['pricePerSquareMeters'] = recommendations['pricePerSquareMeters'].round(2)
 
-        st.table(recommendations[['city', 'price', 'squareMeters','pricePerSquareMeters']].sort_values(by='pricePerSquareMeters'))
+        st.table(recommendations[['city', 'price', 'squareMeters', 'pricePerSquareMeters']]
+        .style.format({
+            'squareMeters': '{:.2f}',
+            'pricePerSquareMeters': '{:.2f}',
+            'price': '{:.0f}'
+        }))
     else:
         st.info("Nie znaleziono podobnych ofert w innych miastach w tym zakresie cenowym.")
 else:
     st.info("Najpierw wybierz miasto i parametry, aby wygenerować tabelę okazji.")
 
-# --- PORÓWNANIE 3 MIAST ---
+# PORÓWNANIE 3 MIAST
 st.markdown("---")
 st.header(f"Porównanie mediany cen: {', '.join(selected_cities)}")
 
@@ -297,19 +316,19 @@ if selected_cities:
     df_comp['type'] = pd.cut(df_comp["squareMeters"], bins=bins, labels=labels)
     df_comp['pricePerSquareMeters'] = df_comp['price']/df_comp['squareMeters']
 
-    # Grupujemy po mieście i typie
+    # Grupowanie po mieście i typie
     stats_comp = df_comp.groupby(['city', 'type'], observed = False)['pricePerSquareMeters'].median().unstack(level = 0)
 
     plt.figure(figsize=(16, 8))
-    ax = stats_comp.plot(kind='bar', figsize=(16, 8), color=['royalblue', 'orange', 'forestgreen'], width=0.8)
+    chart = stats_comp.plot(kind='bar', figsize=(16, 8), color=['royalblue', 'orange', 'forestgreen'], width=0.8)
 
-    for bar in ax.patches:
+    for bar in chart.patches:
         yval = bar.get_height()
         if yval > 0:
-            ax.text(bar.get_x() + bar.get_width() / 2, yval + 100, f'{yval:.2f} zł', ha='center', va='bottom', fontweight='bold', fontsize=10)
+            chart.text(bar.get_x() + bar.get_width() / 2, yval + 100, f'{yval:.2f} zł', ha='center', va='bottom', fontweight='bold', fontsize=10)
 
-    plt.title(f"Mediana ceny za m2 dla poszczególnych kategorii", fontsize=10, fontweight='bold', pad=15)
-    plt.ylabel("Cena za m2 [PLN]")
+    plt.title(f"Mediana ceny za m² dla poszczególnych kategorii", fontsize=10, fontweight='bold', pad=15)
+    plt.ylabel("Cena za m² [PLN]")
     plt.xlabel("Typ mieszkania")
     plt.xticks(rotation=0) # Napisy na osi X poziomo
 
@@ -317,17 +336,16 @@ if selected_cities:
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
     st.pyplot(plt)
-    plt.close()
 
 else:
     st.warning("Wybierz miasta w panelu bocznym, aby zobaczyć porównanie.")
 
-# --- NAJTAŃSZE I NAJDROŻSZE MIASTO W POLSCE ---
+# NAJTAŃSZE I NAJDROŻSZE MIASTO W POLSCE
 st.markdown("---")
 st.header("🏆 Najdroższe vs Najtańsze miasto")
 
-# 1. Obliczamy ogólną medianę dla każdego miasta, żeby znaleźć liderów
-# Robimy to na oryginalnym 'df', żeby pokazać prawdę o całym rynku
+# 1. Obliczenie ogólnej mediany dla każdego miasta, żeby znaleźć liderów
+
 df_all = df.copy()
 df_all['pricePerSquareMeters'] = df_all['price'] / df_all['squareMeters']
 city_medians = df_all.groupby('city')['pricePerSquareMeters'].median().sort_values()
@@ -335,25 +353,24 @@ city_medians = df_all.groupby('city')['pricePerSquareMeters'].median().sort_valu
 najtansze_miasto = city_medians.index[0]
 najdrozsze_miasto = city_medians.index[-1]
 
-# 2. Przygotowujemy dane tylko dla tych dwóch miast
+# 2. Przygotowanie danych tylko dla tych dwóch miast
 df_extremes = df_all[df_all['city'].isin([najtansze_miasto, najdrozsze_miasto])].copy()
 df_extremes['type'] = pd.cut(df_extremes['squareMeters'], bins=bins, labels=labels)
 
-# 3. Obliczamy mediany z podziałem na typy
+# 3. Obliczenie mediany z podziałem na typy
 stats_extremes = df_extremes.groupby(['city', 'type'], observed=False)['pricePerSquareMeters'].median().unstack(level=0)
 
-# 4. Wykres (Twoja stylistyka)
+# 4. Wykres
 st.subheader(f"Zestawienie: {najtansze_miasto} (Najtańsze) vs {najdrozsze_miasto} (Najdroższe)")
 
-fig, ax = plt.subplots(figsize=(12, 6))
+fig, chart = plt.subplots(figsize=(12, 6))
 # Ustawiamy konkretne kolory: czerwony dla drogiego, zielony dla taniego
-stats_extremes.plot(kind='bar', ax=ax, color=['#e74c3c', '#2ecc71'], width=0.7)
+stats_extremes.plot(kind='bar', ax=chart, color=['#e74c3c', '#2ecc71'], width=0.7)
 
-# Dodanie Twoich etykiet
-for p in ax.patches:
+for p in chart.patches:
     yval = p.get_height()
     if yval > 0:
-        ax.text(p.get_x() + p.get_width()/2, yval + 100, f'{yval:.0f} zł', ha='center', va='bottom', fontweight='bold', fontsize=10)
+        chart.text(p.get_x() + p.get_width()/2, yval + 100, f'{yval:.0f} zł', ha='center', va='bottom', fontweight='bold', fontsize=10)
 
 plt.title(f"Różnica w cenach za m² między ekstremami", fontsize=12, fontweight='bold')
 plt.ylabel("Cena za m² [PLN]")
@@ -361,13 +378,12 @@ plt.xlabel("Typ mieszkania")
 plt.xticks(rotation=0)
 plt.legend(title="Miasto")
 
-# Twoje usuwanie ramek
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
+chart.spines['top'].set_visible(False)
+chart.spines['right'].set_visible(False)
 
 st.pyplot(fig)
-plt.close()
 
-# Krótka ciekawostka pod wykresem
+
+# CIEKAWOSTKA
 roznica = city_medians.max() / city_medians.min()
 st.info(f"💡 Ciekawostka: Mediana cen w mieście **{najdrozsze_miasto}** jest o **{roznica:.1f}x** wyższa niż w mieście **{najtansze_miasto}**.")

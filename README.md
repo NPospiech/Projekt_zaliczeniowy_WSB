@@ -44,14 +44,16 @@ Ocena:
 1. Biblioteki:
 
 Bash
+
 pip install streamlit pandas numpy matplotlib plotly seaborn scikit-learn
 
 2. Uruchomienie StreamLit:
 
 Bash
+
 streamlit run analiza_mieszkan.py
 
 **📊 Dane:**
 
-Projekt korzysta z bazy danych apartments_pl_2024_06.csv 
+Projekt korzysta z bazy danych: apartments_pl_2024_06.csv 
 https://www.kaggle.com/datasets/krzysztofjamroz/apartment-prices-in-poland
