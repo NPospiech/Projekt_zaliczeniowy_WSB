@@ -345,7 +345,6 @@ st.markdown("---")
 st.header("🏆 Najdroższe vs Najtańsze miasto")
 
 # 1. Obliczenie ogólnej mediany dla każdego miasta, żeby znaleźć liderów
-
 df_all = df.copy()
 df_all['pricePerSquareMeters'] = df_all['price'] / df_all['squareMeters']
 city_medians = df_all.groupby('city')['pricePerSquareMeters'].median().sort_values()
@@ -364,7 +363,7 @@ stats_extremes = df_extremes.groupby(['city', 'type'], observed=False)['pricePer
 st.subheader(f"Zestawienie: {najtansze_miasto} (Najtańsze) vs {najdrozsze_miasto} (Najdroższe)")
 
 fig, chart = plt.subplots(figsize=(12, 6))
-# Ustawiamy konkretne kolory: czerwony dla drogiego, zielony dla taniego
+# Kolory: czerwony dla drogiego, zielony dla taniego
 stats_extremes.plot(kind='bar', ax=chart, color=['#e74c3c', '#2ecc71'], width=0.7)
 
 for p in chart.patches:
