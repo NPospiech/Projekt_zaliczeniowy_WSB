@@ -1,5 +1,3 @@
-# ABY URUCHOMIĆ, WPISZ W TERMINALU streamlit run analiza_mieszkan.py
-
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -37,7 +35,7 @@ selected_distance = st.sidebar.slider("Odległość od centrum (km):", min_dista
 min_buildYear, max_buildYear = int(df['buildYear'].min()), int(df['buildYear'].max())
 selected_year = st.sidebar.slider("Rok budowy: ", min_buildYear, max_buildYear, (min_buildYear, max_buildYear))
 
-st.sidebar.markdown("---") # Linia oddzielająca
+st.sidebar.markdown("---")
 st.sidebar.subheader("Udogodnienia: ")
 
 filter_balcony = st.sidebar.checkbox("Balkon")
@@ -75,7 +73,7 @@ if filter_storage:
 
 # MULTISELECT
 st.sidebar.markdown("---")
-st.sidebar.header("📊 Porównaj 3 wybrane miasta")
+st.sidebar.header("📊 Porównanie miast")
 cieties_list = df['city'].unique()
 selected_cities = st.sidebar.multiselect("Wybierz do 3 miast do porównania:", cieties_list, max_selections=3, key="comp")
 
@@ -181,6 +179,7 @@ df_city = df_selection.merge(statisctic, on='type')
 df_city['is_bargain'] = df_city['pricePerSquareMeters'] < (df_city['median_price'] - 1 * df_city['std_price'])
 
 top_bargains = df_city[df_city['is_bargain']].sort_values(by='pricePerSquareMeters')
+wybrane_oceny = ["🔥 OKAZJA","✅ DOBRA"]
 
 kawalerka = pd.DataFrame()
 srednie = pd.DataFrame()
@@ -195,18 +194,19 @@ else:
     else:
         # 2. Grupowanie i wybieranie top 3 po typie mieszkania
         top_3_by_type = top.sort_values('pricePerSquareMeters').groupby('type').head(3).reset_index(drop=True)
+        top_3 = top_3_by_type[top_3_by_type['Ocena'].isin(wybrane_oceny)]
 
         # 3. Wyświetlenie wyników
-        kawalerka = top_3_by_type[top_3_by_type['type'] == 'Kawalerka'].reset_index(drop=True)
-        srednie = top_3_by_type[top_3_by_type['type'] == 'Średnie'].reset_index(drop=True)
-        duze = top_3_by_type[top_3_by_type['type'] == 'Duże'].reset_index(drop=True)
+        kawalerka = top_3[top_3['type'] == 'Kawalerka'].reset_index(drop=True)
+        srednie = top_3[top_3['type'] == 'Średnie'].reset_index(drop=True)
+        duze = top_3[top_3['type'] == 'Duże'].reset_index(drop=True)
 
         kolumny_do_pokazania = ['pricePerSquareMeters','standardScore','distCentreCategory']
 
 df_top_map = pd.concat([kawalerka, srednie, duze]).reset_index(drop=True)
 
+# 4. Mapa tylko z tymi 9 okazjami
 if not df_top_map.empty:
-    # 4. Mapa tylko z tymi 9 okazjami
     fig = px.scatter_map(
         df_top_map,
         lat="latitude",
@@ -249,13 +249,22 @@ st.header("Analiza wybranej oferty")
 
 # 1. Wybór oferty z tabeli 'df_top_map'
 if not df_top_map.empty:
-    selected_index = st.selectbox(
+    lista_opcji = []
+    for kat, df_kat in [("Kawalerka", kawalerka), ("Średnie", srednie), ("Duże", duze)]:
+        if not df_kat.empty:
+            for idx in df_kat.index:
+                lista_opcji.append((kat, idx))
+
+    selected_tuple = st.selectbox(
         "Wybierz numer oferty z tabeli powyżej (Index), aby zobaczyć szczegóły:",
-        options=df_top_map.index,
-        format_func=lambda x: f"Oferta nr {x % 3} - {df_top_map.loc[x, 'type']}"
+        options=lista_opcji,
+        format_func=lambda x: f"{x[0]} - oferta nr {x[1]}"
     )
 
-    selected_offer = df_top_map.loc[selected_index]
+    selected_offer = df_top_map[
+        (df_top_map['type'] == selected_tuple[0]) &
+        (df_top_map.index == selected_tuple[1])
+        ].iloc[0]
 
     # 2. Wyświetlenie podsumowania wybranej oferty w kolumnach
     col1, col2, col3 = st.columns(3)
@@ -307,12 +316,22 @@ if not df_top_map.empty:
 else:
     st.info("Brak ofert do analizy dla aktualnych filtrów")
 
-# PORÓWNANIE 3 MIAST
+# PORÓWNANIE MIAST
 st.markdown("---")
-st.header(f"Porównanie mediany cen: {', '.join(selected_cities)}")
+final_comparison_cities = list(selected_cities)
 
-if selected_cities:
-    df_comp = df[df['city'].isin(selected_cities)].copy()
+if len(final_comparison_cities) == 1:
+
+    main_city = selected_city[0] if selected_city else None
+
+    # Warunek: dodajemy je tylko wtedy, gdy użytkownik nie próbuje porównać Poznania z Poznaniem
+    if main_city and main_city != final_comparison_cities[0]:
+        final_comparison_cities.append(main_city)
+
+
+if final_comparison_cities:
+    st.header(f"Porównanie mediany cen: {', '.join(final_comparison_cities)}")
+    df_comp = df[df['city'].isin(final_comparison_cities)].copy()
     df_comp['type'] = pd.cut(df_comp["squareMeters"], bins=bins, labels=labels)
     df_comp['pricePerSquareMeters'] = df_comp['price']/df_comp['squareMeters']
 
@@ -335,10 +354,14 @@ if selected_cities:
     # Usunięcie górnej i prawej ramki
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
-    st.pyplot(plt)
+
+    if len(final_comparison_cities) >= 2:
+        st.pyplot(plt)
+    else:
+        st.warning("Wybierz 2 różne miasta, aby dokonać porównania")
 
 else:
-    st.warning("Wybierz miasta w panelu bocznym, aby zobaczyć porównanie.")
+    st.warning("Wybierz miasto w panelu bocznym, aby zobaczyć porównanie.")
 
 # NAJTAŃSZE I NAJDROŻSZE MIASTO W POLSCE
 st.markdown("---")
