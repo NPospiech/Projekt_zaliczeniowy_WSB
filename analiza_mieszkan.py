@@ -11,6 +11,7 @@ st.title(20*"-" + " Interaktywna Analiza Rynku Mieszkań "+20*"-")
 # WCZYTANIE PLIKU
 path = "apartments_pl_2024_06.csv"
 df = pd.read_csv(path, encoding="utf-8-sig")
+df['city'] = df['city'].str.title()
 
 # CZYSZCZENIE DANYCH
 df = df.drop_duplicates()
@@ -189,20 +190,22 @@ duze = pd.DataFrame()
 if top_bargains.empty:
     st.write("Brak okazji cenowych.")
 else:
-    top = top_bargains[(top_bargains['standardScore'] > 0) ].sort_values(by='pricePerSquareMeters')
-    if top.empty:
-        st.write("Brak mieszkań spełniających kryteria udogodnień i odległości.")
-    else:
-        # 2. Grupowanie i wybieranie top 3 po typie mieszkania
-        top_3_by_type = top.sort_values('pricePerSquareMeters').groupby('type').head(3).reset_index(drop=True)
-        top_3 = top_3_by_type[top_3_by_type['grade'].isin(wybrane_oceny)]
+    wybrane_oceny = ["🔥 OKAZJA", "✅ DOBRA"]
+    top = top_bargains[
+        (top_bargains['grade'].isin(wybrane_oceny)) &
+        (top_bargains['standardScore'] > 0)
+        ]
 
-        # 3. Wyświetlenie wyników
+    if top.empty:
+        st.write("Brak mieszkań spełniających kryteria udogodnień i odpowiedniej oceny.")
+    else:
+        top_3 = top.sort_values('pricePerSquareMeters').groupby('type', observed=False).head(3).reset_index(drop=True)
+
         kawalerka = top_3[top_3['type'] == 'Kawalerka (<40m²)'].reset_index(drop=True)
         srednie = top_3[top_3['type'] == 'Średnie (40-70m²)'].reset_index(drop=True)
-        duze = top_3[top_3['type'] == 'Duże (>70²)'].reset_index(drop=True)
+        duze = top_3[top_3['type'] == 'Duże (>70m²)'].reset_index(drop=True)
 
-        kolumny_do_pokazania = ['pricePerSquareMeters','standardScore','distCentreCategory']
+        kolumny_do_pokazania = ['pricePerSquareMeters', 'standardScore', 'distCentreCategory']
 
 df_top_map = pd.concat([kawalerka, srednie, duze]).reset_index(drop=True)
 
