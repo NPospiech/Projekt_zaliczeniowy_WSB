@@ -15,7 +15,7 @@ df = pd.read_csv(path, encoding="utf-8-sig")
 # CZYSZCZENIE DANYCH
 df = df.drop_duplicates()
 df.drop(["id","ownership","buildingMaterial","floor","poiCount","postOfficeDistance","pharmacyDistance","hasStorageRoom","condition","rooms","schoolDistance","kindergartenDistance","restaurantDistance","clinicDistance","collegeDistance"], axis=1, inplace=True)
-df.dropna(inplace=True) #usunięcie brakujących danych
+df.dropna(inplace=True)
 
 # FILTROWANIE
 st.sidebar.header("🔍 Filtry wyszukiwania")
@@ -80,7 +80,7 @@ selected_cities = st.sidebar.multiselect("Wybierz do 3 miast do porównania:", c
 # OBLICZENIA
 df_selection['pricePerSquareMeters'] = round(df_selection['price']/df_selection['squareMeters'], 2)
 bins = [0, 40, 70, 200]
-labels = ['Kawalerka', 'Średnie', 'Duże']
+labels = ['Kawalerka (<40m²)', 'Średnie (40-70m²)', 'Duże (>70m²)']
 df_selection['type'] = pd.cut(df_selection['squareMeters'], bins=bins, labels=labels)
 
 amenities = ["hasParkingSpace", "hasBalcony", "hasElevator", "hasSecurity"]
@@ -115,13 +115,13 @@ def get_deal_label(score):
     if score > -5: return "⚖️ RYNKOWA"
     return "🚩 DROGO"
 
-df_selection['Ocena'] = df_selection['dealScore'].apply(get_deal_label)
+df_selection['grade'] = df_selection['dealScore'].apply(get_deal_label)
 
 # STATYSTYKI GŁÓWNE
 mediany = df_selection.groupby('type', observed=False)['pricePerSquareMeters'].median()
 
 st.header(f"Dane dla miasta {selected_city}")
-st.dataframe(df_selection[["city","type","pricePerSquareMeters","distCentreCategory", "Ocena"]].reset_index(drop=True))
+st.dataframe(df_selection[["city","type","buildYear", "price","pricePerSquareMeters","distCentreCategory", "grade"]].reset_index(drop=True))
 
 # WYKRESY
 
@@ -134,7 +134,7 @@ for bar in bars:
     plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 100, f'{bar.get_height():.2f} ', ha='center', va='bottom', fontweight='bold')
 plt.gca().spines['top'].set_visible(False)
 plt.gca().spines['right'].set_visible(False)
-plt.xlabel("Kategoria mieszkania")
+plt.xlabel("Typ mieszkania")
 plt.ylabel('Mediana cen [PLN]')
 st.pyplot(plt)
 
@@ -155,6 +155,7 @@ plt.figure(figsize=(20, 6))
 for t in df_selection['type'].unique():
     subset = df_selection[df_selection['type'] == t]
     plt.scatter(subset['buildYear'], subset['pricePerSquareMeters'], label=t, alpha=0.5)
+plt.legend(title='Typ:')
 plt.xlabel("Roku budowy")
 plt.ylabel("Cena za m² [PLN]")
 st.pyplot(plt)
@@ -194,12 +195,12 @@ else:
     else:
         # 2. Grupowanie i wybieranie top 3 po typie mieszkania
         top_3_by_type = top.sort_values('pricePerSquareMeters').groupby('type').head(3).reset_index(drop=True)
-        top_3 = top_3_by_type[top_3_by_type['Ocena'].isin(wybrane_oceny)]
+        top_3 = top_3_by_type[top_3_by_type['grade'].isin(wybrane_oceny)]
 
         # 3. Wyświetlenie wyników
-        kawalerka = top_3[top_3['type'] == 'Kawalerka'].reset_index(drop=True)
-        srednie = top_3[top_3['type'] == 'Średnie'].reset_index(drop=True)
-        duze = top_3[top_3['type'] == 'Duże'].reset_index(drop=True)
+        kawalerka = top_3[top_3['type'] == 'Kawalerka (<40m²)'].reset_index(drop=True)
+        srednie = top_3[top_3['type'] == 'Średnie (40-70m²)'].reset_index(drop=True)
+        duze = top_3[top_3['type'] == 'Duże (>70²)'].reset_index(drop=True)
 
         kolumny_do_pokazania = ['pricePerSquareMeters','standardScore','distCentreCategory']
 
@@ -237,7 +238,7 @@ if not df_top_map.empty:
 
     for nazwa,dane in sekcje:
         st.subheader(nazwa)
-        st.write(dane[['price', 'pricePerSquareMeters', 'standardScore', 'distCentreCategory', 'Ocena']])
+        st.write(dane[['price', 'pricePerSquareMeters', 'standardScore', 'distCentreCategory', 'grade']])
 
 
 else:
@@ -261,15 +262,18 @@ if not df_top_map.empty:
         format_func=lambda x: f"{x[0]} - oferta nr {x[1]}"
     )
 
-    selected_offer = df_top_map[
-        (df_top_map['type'] == selected_tuple[0]) &
-        (df_top_map.index == selected_tuple[1])
-        ].iloc[0]
+    if selected_tuple[0] == "Kawalerka":
+        selected_offer = kawalerka.loc[selected_tuple[1]]
+    elif selected_tuple[0] == "Średnie":
+        selected_offer = srednie.loc[selected_tuple[1]]
+    else:
+        selected_offer = duze.loc[selected_tuple[1]]
+
 
     # 2. Wyświetlenie podsumowania wybranej oferty w kolumnach
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Cena", f"{selected_offer['price']:,} zł")
+        st.metric("Cena", f"{selected_offer['price']} zł")
     with col2:
         st.metric("Cena za m²", f"{selected_offer['pricePerSquareMeters']:.2f} zł")
     with col3:
