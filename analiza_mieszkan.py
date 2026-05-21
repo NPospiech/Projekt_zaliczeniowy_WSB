@@ -15,7 +15,7 @@ df['city'] = df['city'].str.title()
 
 # CZYSZCZENIE DANYCH
 df = df.drop_duplicates()
-df.drop(["id","ownership","buildingMaterial","floor","poiCount","postOfficeDistance","pharmacyDistance","hasStorageRoom","condition","rooms","schoolDistance","kindergartenDistance","restaurantDistance","clinicDistance","collegeDistance"], axis=1, inplace=True)
+df.drop(["id","ownership","buildingMaterial","floor","poiCount","postOfficeDistance","pharmacyDistance","condition","rooms","schoolDistance","kindergartenDistance","restaurantDistance","clinicDistance","collegeDistance"], axis=1, inplace=True)
 df.dropna(inplace=True)
 
 # FILTROWANIE
@@ -217,7 +217,7 @@ if not df_top_map.empty:
         lon="longitude",
         size="standardScore",
         color="type",
-        color_discrete_map={"Kawalerka": "#00FF00", "Średnie": "#0000FF", "Duże": "#FF0000"},
+        color_discrete_map={"Kawalerka": "#0d3b16", "Średnie": "#0b1d33", "Duże": "#4a121a"},
         hover_data=['type', 'price', 'pricePerSquareMeters', 'standardScore'],
         labels={"type": "Rodzaj mieszkania"},
         zoom=10,
@@ -227,6 +227,7 @@ if not df_top_map.empty:
     # 5. Styl mapy i wyświetlenie
     fig.update_layout(map_style="open-street-map")
     fig.update_layout(margin={"r": 0, "t": 60, "l": 0, "b": 0})
+    fig.update_traces(marker=dict(opacity=1.0))
 
     st.subheader(f"Mapa okazji cenowych: {selected_city}")
     st.plotly_chart(fig, use_container_width=True)
